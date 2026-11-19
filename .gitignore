@@ -1,0 +1,23 @@
+# Dependencies and build output
+node_modules/
+.output/
+.wxt/
+dist/
+apps-script/dist/
+coverage/
+*.zip
+
+# Secrets: never commit
+.env
+.env.*
+!.env.example
+.clasprc.json
+.clasp.json
+reference/.clasp.json
+
+# Editors / OS
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.log
