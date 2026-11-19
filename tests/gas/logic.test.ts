@@ -96,14 +96,23 @@ describe("bounces", () => {
       { date: 10, text: "jimbob@x.example and cy@z.example.au" },
       { date: 1, text: "cy@z.example" },
     ];
-    // cy@z.example counts because of "cy@z.example.au": see the known quirk in bounces.ts.
-    expect(countBouncedRecipients(recips, bounces, 5)).toBe(3);
+    expect(countBouncedRecipients(recips, bounces, 5)).toBe(2);
     expect(countBouncedRecipients(recips, [{ date: 10, text: "jimbob@x.example" }], 5)).toBe(0);
     expect(countBouncedRecipients(recips, [{ date: 10, text: "x.bob@x.example" }], 5)).toBe(0);
     expect(countBouncedRecipients(recips, [{ date: 1, text: "bob@x.example" }], 5)).toBe(0);
     expect(bounceThresholdReached(3)).toBe(true);
     expect(bounceThresholdReached(2)).toBe(false);
   });
+  it("does not match the address inside a longer domain (M2.1)", () => {
+    const bob = ["bob@x.com"];
+    for (const t of ["bob@x.com.au", "BOB@X.COM.AU", "<bob@x.com.au>", "bob@x.com.co.uk", "bob@x.com-mail.net", "jimbob@x.com"]) {
+      expect(countBouncedRecipients(bob, [{ date: 1, text: t }], 0), t).toBe(0);
+    }
+    for (const t of ["bob@x.com", "<bob@x.com>", "bob@x.com.", "bob@x.com. Next", "to bob@x.com,", "(bob@x.com)", "bob@x.com\n"]) {
+      expect(countBouncedRecipients(bob, [{ date: 1, text: t }], 0), t).toBe(1);
+    }
+  });
+
   it("looks at the last 20 sent entries", () => {
     const log = Array.from({ length: 25 }, (_, i) => logEntry({ to: `U${i}@x.example` }));
     log.push(logEntry({ status: "failed", to: "f@x.example" }));

@@ -1,9 +1,14 @@
 /**
  * The rebuilt Apps Script bundle must behave exactly like the deployed one
- * (reference/Code.js). Both run in identical fake Apps Script runtimes and
- * are driven through the same steps; every return value and the full state
- * (sheets, properties, sent mail, UI, triggers, logs, Gmail queries) must
- * match after every step.
+ * (reference/Code.js) except for the intended fixes in INTENDED_FIXES.
+ *
+ * The comparison target is the reference with exactly those fixes applied
+ * (each a find/replace that must match once). Both bundles run in identical
+ * fake Apps Script runtimes and are driven through the same steps; every
+ * return value and the full state (sheets, properties, sent mail, UI,
+ * triggers, logs, Gmail queries) must match after every step. Any other
+ * difference fails. A separate block runs the unpatched reference to show
+ * each fix changes behaviour where intended.
  */
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -13,7 +18,35 @@ import { OPT_OUT_LINE } from "@/shared/optout";
 import { buildGas } from "@/scripts/build-gas.mjs";
 import { GasRuntime, type SendBehaviour, prng } from "./harness";
 
-const REFERENCE = readFileSync(resolve(__dirname, "../../reference/Code.js"), "utf8");
+const REFERENCE_RAW = readFileSync(resolve(__dirname, "../../reference/Code.js"), "utf8");
+
+/** M2.1 fixes: the only intended differences from the deployed bundle. */
+const INTENDED_FIXES = [
+  {
+    name: "bounce regex: bob@x.com must not match bob@x.com.au",
+    from: "($|[^a-z0-9-]|\\\\.(?![a-z0-9]))",
+    to: "($|[^a-z0-9.-]|\\\\.(?![a-z0-9]))",
+  },
+  {
+    name: "cancel: missing or non-string campaignId is rejected, never cancels everything",
+    from: `    const campaignId = isRecord3(payload) && typeof payload.campaignId === "string" ? payload.campaignId : null;
+    const cancelled = skipPending((r) => campaignId === null || r.campaignId === campaignId, STATUS_REASONS.cancelled, now);`,
+    to: `    const campaignId = isRecord3(payload) ? payload.campaignId : void 0;
+    if (typeof campaignId !== "string" || campaignId.trim() === "") return { ok: false, error: "invalid_campaign_id" };
+    const cancelled = skipPending((r) => r.campaignId === campaignId, STATUS_REASONS.cancelled, now);`,
+  },
+] as const;
+
+function applyFixes(code: string): string {
+  return INTENDED_FIXES.reduce((out, fix) => {
+    const count = out.split(fix.from).length - 1;
+    if (count !== 1) throw new Error(`fix "${fix.name}" matched ${count} times in reference/Code.js`);
+    return out.replace(fix.from, () => fix.to);
+  }, code);
+}
+
+/** reference/Code.js + INTENDED_FIXES: what the rebuilt bundle must equal. */
+const REFERENCE = applyFixes(REFERENCE_RAW);
 let rebuilt = "";
 
 beforeAll(async () => {
@@ -295,9 +328,16 @@ const scripted: Scenario = (rt, step) => {
     s.data.push(["@other.example", "", "manual"], ["", "", ""], ["garbage", "", ""]);
   });
   ticks(rt, step, 2, "after exclusions");
-  // A non-string campaignId cancels every campaign (deployed behaviour).
-  step("cancel with numeric campaign", () => api(rt, "cancel", { campaignId: 7 }));
-  step("cancel everything", () => api(rt, "cancel"));
+  // M2.1: a missing, blank or non-string campaignId is rejected (it used to cancel everything).
+  for (const [label, payload] of [
+    ["missing payload", undefined],
+    ["no campaignId", {}],
+    ["numeric", { campaignId: 7 }],
+    ["blank", { campaignId: "  " }],
+  ] as const) {
+    step(`cancel rejected: ${label}`, () => api(rt, "cancel", payload));
+  }
+  step("cancel the remaining campaign", () => api(rt, "cancel", { campaignId: "keep" }));
 
   // Bounces: 3 of the last 20 sent recipients.
   step("queue bounce batch", () =>
@@ -315,6 +355,7 @@ const scripted: Scenario = (rt, step) => {
     rt.addBounce(`Delivery failed: x${sent[2]!.to} (not a real match)`, "postmaster@example.com");
     rt.addBounce(`${sent[2]!.to}.`, "Someone <friend@example.com>");
     rt.addBounce(`Failed: list+${sent[2]!.to} (a different address)`, "postmaster@example.com");
+    rt.addBounce(`550 ${sent[2]!.to}.au: no such domain (a different address)`, "postmaster@example.com");
   });
   ticks(rt, step, 8, "two bounces");
   step("third bounce", () => {
@@ -474,6 +515,11 @@ describe("rebuilt Apps Script bundle", () => {
     }
   });
 
+  it("applies each intended fix exactly once", () => {
+    expect(REFERENCE).not.toBe(REFERENCE_RAW);
+    for (const fix of INTENDED_FIXES) expect(REFERENCE).toContain(fix.to);
+  });
+
   it("matches reference/Code.js on the scripted scenario", { timeout: 60_000 }, () => {
     const ref = expectEquivalent(scripted);
     // Guard against a vacuous comparison: the scenario must reach every branch.
@@ -513,12 +559,107 @@ describe("rebuilt Apps Script bundle", () => {
     expect(codes.size).toBeGreaterThanOrEqual(8);
   });
 
-  it("is byte-identical to reference/Code.js with the pinned esbuild", () => {
+  it("is byte-identical to reference/Code.js + intended fixes with the pinned esbuild", () => {
     // Not required for correctness (the behavioural tests above are); this
     // flags any unintended source drift. After an esbuild upgrade that only
     // changes formatting, rely on the behavioural tests and update the pin.
     expect(createHash("sha256").update(rebuilt).digest("hex")).toBe(
       createHash("sha256").update(REFERENCE).digest("hex"),
     );
+  });
+});
+
+describe("intended differences from the deployed bundle (M2.1)", () => {
+  const approvedAt = new Date(MONDAY_8AM_NY).toISOString();
+
+  function ready(code: string): GasRuntime {
+    const rt = new GasRuntime(code, { startMs: Date.UTC(2026, 10, 16, 15, 0), seed: 7 }); // Mon 10:00 NY
+    rt.call("strikerSetup");
+    rt.setSetting("DEV_MODE", "FALSE");
+    return rt;
+  }
+
+  function queue(rt: GasRuntime, items: ReturnType<typeof item>[]) {
+    expect(api(rt, "addToQueue", { batchId: "b", approvedAt, items })).toMatchObject({ response: { ok: true } });
+  }
+
+  function statuses(rt: GasRuntime): string[] {
+    return rt.queueRows().map((r) => `${r.id}:${r.status}`);
+  }
+
+  describe("cancel", () => {
+    const items = [
+      item("a1", "a1@x.example", { campaignId: "A" }),
+      item("a2", "a2@x.example", { campaignId: "A" }),
+      item("b1", "b1@x.example", { campaignId: "B" }),
+    ];
+
+    it.each([
+      ["missing payload", undefined],
+      ["payload without campaignId", {}],
+      ["numeric campaignId", { campaignId: 7 }],
+      ["null campaignId", { campaignId: null }],
+      ["array campaignId", { campaignId: ["A"] }],
+      ["empty campaignId", { campaignId: "" }],
+      ["blank campaignId", { campaignId: "   " }],
+      ["payload is an array", [{ campaignId: "A" }]],
+    ])("rejects %s and changes nothing", (_label, payload) => {
+      const rt = ready(rebuilt);
+      queue(rt, items);
+      const before = rt.snapshot();
+      expect(api(rt, "cancel", payload)).toEqual({
+        mime: "JSON",
+        response: { ok: false, error: "invalid_campaign_id" },
+      });
+      expect(rt.snapshot().sheets).toEqual(before.sheets);
+    });
+
+    it("cancels only the named campaign", () => {
+      const rt = ready(rebuilt);
+      queue(rt, items);
+      expect(api(rt, "cancel", { campaignId: "A" })).toMatchObject({ response: { ok: true, data: { cancelled: 2 } } });
+      expect(statuses(rt)).toEqual(["a1:skipped", "a2:skipped", "b1:queued"]);
+    });
+
+    it("used to cancel every campaign in the deployed bundle", () => {
+      const rt = ready(REFERENCE_RAW);
+      queue(rt, items);
+      expect(api(rt, "cancel", { campaignId: 7 })).toMatchObject({ response: { ok: true, data: { cancelled: 3 } } });
+      expect(statuses(rt)).toEqual(["a1:skipped", "a2:skipped", "b1:skipped"]);
+    });
+  });
+
+  describe("bounce matching", () => {
+    /** Sends 3 emails, adds bounces from `text(to)`, then returns what the 4th tick does. */
+    function bounceRun(code: string, text: (to: string) => string) {
+      const rt = ready(code);
+      queue(rt, ["r1", "r2", "r3", "r4"].map((id) => item(id, `${id}@bounce.example`)));
+      for (let i = 0; i < 25 && rt.sent.length < 3; i++) {
+        rt.now += MIN;
+        rt.call("strikerTick");
+      }
+      expect(rt.sent.map((m) => m.to)).toEqual(["r1@bounce.example", "r2@bounce.example", "r3@bounce.example"]);
+      for (const m of rt.sent) rt.addBounce(text(m.to));
+      for (let i = 0; i < 10; i++) {
+        rt.now += MIN;
+        rt.call("strikerTick");
+      }
+      return { paused: rt.props.get("PAUSE_REASON") ?? "", sent: rt.sent.length };
+    }
+
+    const suffixed = (to: string) => `Delivery to ${to}.au failed: domain not found`;
+
+    it("ignores an address that only appears with a longer domain", () => {
+      expect(bounceRun(rebuilt, suffixed)).toEqual({ paused: "", sent: 4 });
+    });
+
+    it("still pauses on real bounces, including <addr> and a trailing full stop", () => {
+      expect(bounceRun(rebuilt, (to) => `Your message to <${to}> wasn't delivered.`)).toEqual({ paused: "bounces", sent: 3 });
+      expect(bounceRun(rebuilt, (to) => `Address not found: ${to}.`)).toEqual({ paused: "bounces", sent: 3 });
+    });
+
+    it("used to count bob@x.com.au as bob@x.com in the deployed bundle", () => {
+      expect(bounceRun(REFERENCE_RAW, suffixed)).toEqual({ paused: "bounces", sent: 3 });
+    });
   });
 });

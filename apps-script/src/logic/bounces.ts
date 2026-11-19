@@ -23,13 +23,9 @@ function escapeRegExp(s: string): string {
 
 /**
  * Counts distinct recipients that appear in a bounce newer than the last
- * acknowledgement (resume). The address must not be preceded by an address
- * character, so "bob@x.com" doesn't match "jimbob@x.com".
- *
- * Known quirk (deployed behaviour, kept as is): the trailing class
- * `[^a-z0-9-]` also accepts ".", so "bob@x.com" DOES match "bob@x.com.au"
- * and the `\.(?!…)` alternative never decides anything. This can only
- * over-count, i.e. pause early.
+ * acknowledgement (resume). The address must stand alone in the text:
+ * "bob@x.com" doesn't match "jimbob@x.com" or "bob@x.com.au", but does match
+ * "<bob@x.com>" or "bob@x.com." at the end of a sentence.
  */
 export function countBouncedRecipients(
   recipients: readonly string[],
@@ -39,7 +35,7 @@ export function countBouncedRecipients(
   const fresh = bounces.filter((b) => b.date > ackAtMs).map((b) => b.text.toLowerCase());
   let count = 0;
   for (const r of new Set(recipients)) {
-    const re = new RegExp(`(^|[^a-z0-9._%+-])${escapeRegExp(r)}($|[^a-z0-9-]|\\.(?![a-z0-9]))`);
+    const re = new RegExp(`(^|[^a-z0-9._%+-])${escapeRegExp(r)}($|[^a-z0-9.-]|\\.(?![a-z0-9]))`);
     if (fresh.some((t) => re.test(t))) count++;
   }
   return count;

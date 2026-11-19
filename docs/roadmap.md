@@ -30,20 +30,27 @@ the originals were lost. `npm run build:gas` reproduces it byte for byte, and
 runtime (scripted walkthrough + seeded random walks) and requires identical
 results and state after every step.
 
-Known quirks in deployed behaviour, kept on purpose for now:
+### M2.1 – Fixes · done (needs redeploy)
 
-- Bounce matching treats `bob@x.com.au` as a bounce for `bob@x.com` (only
-  over-counts, so it can pause early; see `logic/bounces.ts`).
-- `cancel` with a non-string `campaignId` cancels every campaign.
+The only intended differences from `reference/Code.js`; the equivalence test
+compares against the reference with exactly these two fixes applied:
+
+- **Cancel:** a missing, blank or non-string `campaignId` is now rejected with
+  `invalid_campaign_id` and changes nothing. Before, it cancelled every
+  campaign. "Cancel all" is no longer possible through the web app.
+- **Bounces:** `bob@x.com` no longer matches `bob@x.com.au` (or any longer
+  domain) in a bounce notice, so unrelated bounces can't trigger the
+  auto-pause. `<bob@x.com>` and `bob@x.com.` still match.
 
 **Live Google tests:** mostly passed. Remaining:
 
 - [ ] Resume timing (next send waits a fresh 5–6 min gap after resume)
-- [ ] Cancel (all pending, and per campaign)
+- [ ] Cancel per campaign; missing/non-string campaignId rejected (M2.1)
 - [ ] Exclusions (address and `@domain`; pending rows skipped)
 - [ ] Interrupted sends: `found_in_sent` recovery
 - [ ] Interrupted sends: `uncertain` (not found in Sent) held, never retried
-- [ ] Bounces (3+ of the last 20 sends → auto-pause; resume acknowledges)
+- [ ] Bounces (3+ of the last 20 sends → auto-pause; resume acknowledges;
+      `addr.au`-style lookalikes ignored, M2.1)
 
 ## Planned
 

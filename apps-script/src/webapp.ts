@@ -111,10 +111,15 @@ function skipPending(match: (row: QueueRow) => boolean, reason: string, now: Dat
   return count;
 }
 
-/** FR21: skips pending rows of one campaign, or of all campaigns when none is given. */
+/**
+ * FR21: skips the pending rows of one campaign. A non-empty string
+ * campaignId is required; anything else is rejected so a malformed request
+ * can never cancel every campaign.
+ */
 function cancel(payload: unknown, now: Date): ApiResponse {
-  const campaignId = isRecord(payload) && typeof payload.campaignId === "string" ? payload.campaignId : null;
-  const cancelled = skipPending((r) => campaignId === null || r.campaignId === campaignId, STATUS_REASONS.cancelled, now);
+  const campaignId = isRecord(payload) ? payload.campaignId : undefined;
+  if (typeof campaignId !== "string" || campaignId.trim() === "") return { ok: false, error: "invalid_campaign_id" };
+  const cancelled = skipPending((r) => r.campaignId === campaignId, STATUS_REASONS.cancelled, now);
   return { ok: true, data: { cancelled } };
 }
 

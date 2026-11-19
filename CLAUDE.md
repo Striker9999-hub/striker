@@ -2,7 +2,7 @@
 
 Chrome extension (WXT + React + TypeScript) plus a Google Apps Script sender
 that each user deploys into their own Google account. Requirements live in
-`docs/Striker Requirements Gathering v0.3.md`; progress in `docs/roadmap.md`.
+`docs/requirements.md`; progress in `docs/roadmap.md`.
 
 ## Layout
 
@@ -15,9 +15,11 @@ that each user deploys into their own Google account. Requirements live in
   `scheduler.ts` (1-minute tick) and `webapp.ts` (`doPost`) orchestrate.
 - `scripts/build-gas.mjs` – bundles `apps-script/src/main.ts` into
   `apps-script/dist/Code.js` (esbuild IIFE `Striker` + global wrappers).
-- `reference/Code.js` – the last deployed bundle. `tests/gas/equivalence.test.ts`
-  runs both bundles against a mocked Apps Script runtime and requires identical
-  behaviour. Change it only when intentionally changing deployed behaviour.
+- `reference/Code.js` – the bundle deployed before M2.1, kept unchanged.
+  `tests/gas/equivalence.test.ts` applies `INTENDED_FIXES` to it and requires
+  the rebuilt bundle to match that byte for byte and in behaviour. When you
+  intentionally change deployed behaviour, add a fix entry there (or replace
+  the reference with a newly deployed bundle and clear the list).
 
 ## Commands
 
@@ -30,7 +32,7 @@ Run all four before committing.
 
 Deploying the sender: `npm run build:gas`, then `clasp push` from a local
 `.clasp.json` (gitignored; `"rootDir": "apps-script/dist"`). esbuild is pinned
-exactly so the bundle stays byte-identical to `reference/Code.js`; if an
+exactly so the bundle stays byte-identical to `reference/Code.js` + `INTENDED_FIXES`; if an
 upgrade only changes formatting, the behavioural equivalence tests still
 decide correctness.
 
