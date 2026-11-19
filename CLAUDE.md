@@ -28,6 +28,12 @@ that each user deploys into their own Google account. Requirements live in
 
 Run all four before committing.
 
+Deploying the sender: `npm run build:gas`, then `clasp push` from a local
+`.clasp.json` (gitignored; `"rootDir": "apps-script/dist"`). esbuild is pinned
+exactly so the bundle stays byte-identical to `reference/Code.js`; if an
+upgrade only changes formatting, the behavioural equivalence tests still
+decide correctness.
+
 ## Non-negotiable rules
 
 - Safety limits (40/day hard max, ≥5-minute random gap, Mon–Fri 09:00–17:00)

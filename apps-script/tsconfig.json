@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "Preserve",
+    "moduleResolution": "Bundler",
+    "verbatimModuleSyntax": true,
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitReturns": true,
+    "types": ["google-apps-script"]
+  },
+  "include": ["src/**/*.ts", "../shared/**/*.ts"]
+}

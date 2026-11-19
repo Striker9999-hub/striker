@@ -10,16 +10,20 @@
     "build": "wxt build",
     "zip": "wxt zip",
     "postinstall": "wxt prepare",
-    "typecheck": "wxt prepare && tsc --noEmit",
+    "typecheck": "wxt prepare && tsc --noEmit && tsc --noEmit -p apps-script",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "build:gas": "node scripts/build-gas.mjs"
   },
   "devDependencies": {
     "@testing-library/react": "^16.3.3",
     "@testing-library/user-event": "^14.6.13",
+    "@types/google-apps-script": "^2.0.15",
+    "@types/node": "^26.6.6",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@wxt-dev/module-react": "^1.2.2",
+    "esbuild": "0.28.2",
     "jsdom": "^31.0.1",
     "typescript": "^7.0.2",
     "vitest": "^5.1.1",

@@ -24,8 +24,17 @@ exclusions, error classification and protective pauses, stuck-send recovery,
 bounce threshold, secret-protected web app
 (`addToQueue`, `pause`, `resume`, `cancel`, `getStatus`, `addExclusion`).
 
-The sources were rebuilt from the deployed bundle (`reference/Code.js`); an
-equivalence test runs both bundles against a mocked Apps Script runtime.
+The sources were rebuilt from the deployed bundle (`reference/Code.js`) after
+the originals were lost. `npm run build:gas` reproduces it byte for byte, and
+`tests/gas/equivalence.test.ts` runs both bundles against a mocked Apps Script
+runtime (scripted walkthrough + seeded random walks) and requires identical
+results and state after every step.
+
+Known quirks in deployed behaviour, kept on purpose for now:
+
+- Bounce matching treats `bob@x.com.au` as a bounce for `bob@x.com` (only
+  over-counts, so it can pause early; see `logic/bounces.ts`).
+- `cancel` with a non-string `campaignId` cancels every campaign.
 
 **Live Google tests:** mostly passed. Remaining:
 
