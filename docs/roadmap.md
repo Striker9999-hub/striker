@@ -9,7 +9,7 @@ permissions only. Shared modules: `limits.ts` (40/day max and default, random
 5–6 minute gap, never under 5, Mon–Fri 09:00–17:00), `optout.ts`,
 `textSafety.ts`. MIT licence, `.gitignore`, `CLAUDE.md`.
 
-## M1 – Options page · planned
+## M1 – Options page · done
 
 Gemini API key (stored only in `chrome.storage.local`) with the free-tier
 privacy notice and a soft "AIza" format check; daily limit, gap range and
